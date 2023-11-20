@@ -1,0 +1,156 @@
+
+function showSidebar() {
+  // Get the active spreadsheet and the active cell
+  var ss = SpreadsheetApp.getActiveSpreadsheet();
+  var cell = ss.getActiveCell();
+
+  // Get the exchange rate from USD to ZAR
+  var usdToZar = ss.getSheetByName('usdzar').getRange('A1').getValue();
+
+  // Check if the active cell is in column A (date column)
+  if (cell.getColumn() == 1) {
+    var date = Utilities.formatDate(new Date(cell.getValue()), ss.getSpreadsheetTimeZone(), "EEEE dd MMMM yyyy");
+
+    // Define an array of sheet names to get data from
+    var sheets = ["Centus", "Plus", "Binc", "Bincome", "Bincua", "Bincru", "CentusBNB", "BincomeBNB", "Bincpl", "Bincin"];
+
+    // Create an empty object to store the data
+    var data = {};
+
+    // Loop through each sheet in the 'sheets' array
+    sheets.forEach(function (name) {
+      var sheet = ss.getSheetByName(name);
+
+      // Get values from columns B to F and J, starting from row 2 to the last row with data
+      var values = sheet.getRange("B2:J" + sheet.getLastRow()).getValues();
+
+      // Loop through each row in the values array
+      values.forEach(function (row) {
+        var rowDate = Utilities.formatDate(new Date(row[0]), ss.getSpreadsheetTimeZone(), "EEEE dd MMMM yyyy");
+        var amount = row[4];
+        var nameFromJ = row[8]; // Get the name from column J
+
+        // Check if the date of the row matches the date of the clicked cell
+        if (rowDate == date) {
+          if (!data[name]) {
+            data[name] = [];
+          }
+
+          // Add the amount and the name from column J to the data object
+          data[name].push({ amount: amount, name: nameFromJ, date: row[0] });
+        }
+      });
+    });
+
+    // Define a color for each sheet
+    var colors = {
+      "Centus": "#000000",
+      "Plus": "#0000FF",
+      "Binc": "#FF0000",
+      "Bincome": "#00FF00",
+      "Bincua": "#800080",
+      "Bincru": "#FFA500",
+      "CentusBNB": "#008080",
+      "BincomeBNB": "#FFD700",
+      "Bincpl": "#FF00FF",
+      "Bincin": "#A9A9A9"
+    };
+
+    // Create an HTML string for the sidebar
+    var html = '<h4 style="text-align: center; color: #3366cc; font-family: \'Comic Sans MS\', sans-serif;">' + date + '</h4><hr/>';
+
+    // Loop through the keys in the 'data' object
+    var grandTotal = 0; // Variable to store the grand total
+
+    for (var key in data) {
+      var color = colors[key]; // Assuming you want to use different colors for each sheet
+
+      html += "<div class='color-box' style='text-align: center; border: 3px solid " + color + "; padding: 10px; margin-bottom: 15px; animation: colorAnimation 6s linear infinite;'>";
+      html += "<h2 style='color: " + color + ";'>" + (key === "Plus" ? "Centus +" : key) + "</h2>";
+
+      // Loop through each entry in the data array
+      var sheetTotal = 0; // Variable to store the total for each sheet
+
+      data[key].forEach(function (entry) {
+        var amount = entry.amount;
+        var nameFromJ = entry.name;
+        var amountInZar = amount * usdToZar;
+
+        html += "<div style='text-align: center;'><div style='border: 1px solid lime; padding: 1px; width: 100%;'>" + nameFromJ + "</div></div>";
+        html += "<div style='display: flex; justify-content: space-between; margin-top: 5px;'><span style='border: 3px solid blue; padding: 5px; font-size: 15px;'>$ " + amount.toFixed(2) + "</span><span style='border: 3px solid purple; padding: 5px; font-size: 15px;'>R " + amountInZar.toFixed(2) + "</span></div><br/>";
+
+        sheetTotal += amount; // Accumulate the total for each entry
+      });
+
+      // Add total for the sheet
+      var sheetTotalInZar = sheetTotal * usdToZar;
+      html += "<div style='text-align: center;'><div style='border: 1px solid red; padding: 1px; width: 100%;'>Totaal</div></div>";
+      html += "<div style='margin-bottom: 5px;'></div>"; // Add a bit of space
+      html += "<div style='display: flex; justify-content: space-between;'><span style='border: 1px solid blue; padding: 5px; font-size: 15px;'>$ " + sheetTotal.toFixed(2) + "</span><span style='border: 3px solid purple; padding: 5px; font-size: 15px;'>R " + sheetTotalInZar.toFixed(2) + "</span></div>";
+
+      // Accumulate the grand total
+      grandTotal += sheetTotal;
+
+      html += "</div>"; // Close the box
+    }
+
+    // Add grand total
+    var grandTotalInZar = grandTotal * usdToZar;
+    html += "<div style='text-align: center;'><div style='border: 1px solid red; padding: 1px; width: 100%;'>Groot Totaal</div></div>";
+    html += "<div style='margin-bottom: 5px;'></div>"; // Add a bit of space
+    html += "<div style='display: flex; justify-content: space-between;'><span style='border: 1px solid blue; padding: 5px; font-size: 15px;'>$ " + grandTotal.toFixed(2) + "</span><span style='border: 3px solid purple; padding: 5px; font-size: 15px;'>R " + grandTotalInZar.toFixed(2) + "</span></div>";
+
+    // Add monthly totals
+html += "<h3 style='text-align: center;'>Monthly</h3>";
+var monthlyTotals = {};
+for (var key in data) {
+  data[key].forEach(function (entry) {
+    var monthYear = Utilities.formatDate(new Date(entry.date), ss.getSpreadsheetTimeZone(), "MMMM yyyy");
+    if (!monthlyTotals[monthYear]) {
+      monthlyTotals[monthYear] = 0;
+    }
+    monthlyTotals[monthYear] += entry.amount;
+  });
+}
+for (var monthYear in monthlyTotals) {
+  html += "<h4>" + monthYear + "</h4>";
+  html += getSummaryHTML(monthlyTotals[monthYear]);
+}
+
+// Add yearly totals
+html += "<h3 style='text-align: center;'>Yearly</h3>";
+var yearlyTotals = {};
+for (var key in data) {
+  data[key].forEach(function (entry) {
+    var year = Utilities.formatDate(new Date(entry.date), ss.getSpreadsheetTimeZone(), "yyyy");
+    if (!yearlyTotals[year]) {
+      yearlyTotals[year] = 0;
+    }
+    yearlyTotals[year] += entry.amount;
+  });
+}
+for (var year in yearlyTotals) {
+  html += "<h4>" + year + "</h4>";
+  html += getSummaryHTML(yearlyTotals[year]);
+}
+
+// Helper function to generate summary HTML
+function getSummaryHTML(total) {
+  var totalInZar = total * usdToZar;
+  return "<div style='text-align: center;'><div style='border: 1px solid red; padding: 1px; width: 100%;'>Total</div></div>" +
+    "<div style='margin-bottom: 5px;'></div>" +
+    "<div style='display: flex; justify-content: space-between;'>" +
+    "<span style='border: 1px solid blue; padding: 5px; font-size: 15px;'>$ " + total.toFixed(2) + "</span>" +
+    "<span style='border: 3px solid purple; padding: 5px; font-size: 15px;'>R " + totalInZar.toFixed(2) + "</span>" +
+    "</div>";
+}
+
+   
+
+    // Display the sidebar with increased width
+    var ui = HtmlService.createHtmlOutput(html)
+      .setTitle('Daaglikse Uiteensetting ')
+      .setWidth(600); // Adjust the width as needed
+    SpreadsheetApp.getUi().showSidebar(ui);
+  }
+}
